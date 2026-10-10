@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MessageBus } from './message-bus.js';
 import { PolicyEngine } from '../policy/policy-engine.js';
-import { PolicyDecision } from '../policy/types.js';
+import { PolicyDecision, ApprovalMode } from '../policy/types.js';
 import {
   MessageBusType,
   type ToolConfirmationRequest,
@@ -138,6 +138,119 @@ describe('MessageBus', () => {
       await messageBus.publish(request);
 
       expect(requestHandler).toHaveBeenCalledWith(request);
+    });
+
+    describe('onApprovalRequest', () => {
+      const riskyRequest: ToolConfirmationRequest = {
+        type: MessageBusType.TOOL_CONFIRMATION_REQUEST,
+        toolCall: { name: 'run_shell_command', args: { command: 'rm -rf /' } },
+        correlationId: 'approval-1',
+        serverName: 'test-server',
+      };
+
+      const setup = (onApprovalRequest: ReturnType<typeof vi.fn>) => {
+        policyEngine = new PolicyEngine({
+          defaultDecision: PolicyDecision.ASK_USER,
+          onApprovalRequest,
+        });
+        messageBus = new MessageBus(policyEngine);
+
+        const responseHandler = vi.fn();
+        const requestHandler = vi.fn();
+        const rejectionHandler = vi.fn();
+        messageBus.subscribe(
+          MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          responseHandler,
+        );
+        messageBus.subscribe(
+          MessageBusType.TOOL_CONFIRMATION_REQUEST,
+          requestHandler,
+        );
+        messageBus.subscribe(
+          MessageBusType.TOOL_POLICY_REJECTION,
+          rejectionHandler,
+        );
+
+        return { responseHandler, requestHandler, rejectionHandler };
+      };
+
+      it('allows the call when the handler approves it', async () => {
+        const onApprovalRequest = vi.fn().mockResolvedValue(true);
+        const { responseHandler, rejectionHandler, requestHandler } =
+          setup(onApprovalRequest);
+
+        await messageBus.publish(riskyRequest);
+
+        expect(onApprovalRequest).toHaveBeenCalledWith({
+          toolName: 'run_shell_command',
+          args: { command: 'rm -rf /' },
+          serverName: 'test-server',
+          subagent: undefined,
+          approvalMode: ApprovalMode.DEFAULT,
+        });
+        expect(responseHandler).toHaveBeenCalledWith({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId: 'approval-1',
+          confirmed: true,
+        });
+        expect(rejectionHandler).not.toHaveBeenCalled();
+        // The headless handler answers instead of deferring to the UI.
+        expect(requestHandler).not.toHaveBeenCalled();
+      });
+
+      it('denies the call and emits a rejection when the handler declines', async () => {
+        const onApprovalRequest = vi.fn().mockResolvedValue(false);
+        const { responseHandler, rejectionHandler } = setup(onApprovalRequest);
+
+        await messageBus.publish(riskyRequest);
+
+        expect(responseHandler).toHaveBeenCalledWith({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId: 'approval-1',
+          confirmed: false,
+        });
+        expect(rejectionHandler).toHaveBeenCalledWith({
+          type: MessageBusType.TOOL_POLICY_REJECTION,
+          toolCall: riskyRequest.toolCall,
+        });
+      });
+
+      it('denies the call when the handler throws', async () => {
+        const onApprovalRequest = vi
+          .fn()
+          .mockRejectedValue(new Error('approval channel offline'));
+        const { responseHandler, rejectionHandler } = setup(onApprovalRequest);
+
+        await messageBus.publish(riskyRequest);
+
+        expect(responseHandler).toHaveBeenCalledWith({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId: 'approval-1',
+          confirmed: false,
+        });
+        expect(rejectionHandler).toHaveBeenCalled();
+      });
+
+      it('falls back to UI confirmation when no handler is registered', async () => {
+        policyEngine = new PolicyEngine({
+          defaultDecision: PolicyDecision.ASK_USER,
+        });
+        messageBus = new MessageBus(policyEngine);
+        const responseHandler = vi.fn();
+        messageBus.subscribe(
+          MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          responseHandler,
+        );
+
+        await messageBus.publish(riskyRequest);
+
+        expect(responseHandler).toHaveBeenCalledWith({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId: 'approval-1',
+          confirmed: false,
+          requiresUserConfirmation: true,
+        });
+      });
     });
 
     it('should forward toolAnnotations to policyEngine.check', async () => {

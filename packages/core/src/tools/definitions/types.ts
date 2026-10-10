@@ -12,6 +12,16 @@ import { type FunctionDeclaration } from '@google/genai';
 export type ToolFamily = 'default-legacy' | 'gemini-3';
 
 /**
+ * Identifies the runtime implementation that backs a `grep_search` declaration.
+ *
+ * `GrepTool` and `RipGrepTool` intentionally expose the same public tool name
+ * (`grep_search`) because they are interchangeable at the model level. Their
+ * declarations therefore cannot be distinguished by name alone, and consumers
+ * that need to reason about which schema was emitted must use this metadata.
+ */
+export type GrepImplementationVariant = 'legacy-regex' | 'native-ripgrep';
+
+/**
  * Defines a tool's identity using a structured declaration.
  */
 export interface ToolDefinition {
@@ -22,6 +32,13 @@ export interface ToolDefinition {
    * Optional overrides for specific model families or versions.
    */
   overrides?: (modelId: string) => Partial<FunctionDeclaration> | undefined;
+
+  /**
+   * Local-only metadata describing the runtime implementation behind the
+   * declaration. It is never sent to the model; it exists so declarations that
+   * deliberately share a tool name can still be disambiguated.
+   */
+  implementationVariant?: GrepImplementationVariant;
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   type HookCheckerRule,
   ApprovalMode,
   type CheckResult,
+  type PolicyApprovalRequest,
   ALWAYS_ALLOW_PRIORITY_FRACTION,
 } from './types.js';
 import { stableStringify } from './stable-stringify.js';
@@ -250,6 +251,9 @@ export class PolicyEngine {
   private approvalMode: ApprovalMode;
   private readonly sandboxManager: SandboxManager;
   private readonly isTrustedFolderFn?: () => boolean;
+  private readonly onApprovalRequestFn?: (
+    request: PolicyApprovalRequest,
+  ) => Promise<boolean>;
 
   constructor(config: PolicyEngineConfig = {}, checkerRunner?: CheckerRunner) {
     this.rules = (config.rules ?? []).sort(
@@ -304,6 +308,38 @@ export class PolicyEngine {
     this.approvalMode = config.approvalMode ?? ApprovalMode.DEFAULT;
     this.sandboxManager = config.sandboxManager ?? new NoopSandboxManager();
     this.isTrustedFolderFn = config.isTrustedFolder;
+    this.onApprovalRequestFn = config.onApprovalRequest;
+  }
+
+  /**
+   * Asks the configured approval handler to rule on a tool call that resolved
+   * to ASK_USER.
+   *
+   * Returns `undefined` when no handler is registered, so callers can fall back
+   * to interactive confirmation. A throwing handler is treated as a rejection.
+   */
+  async requestApproval(
+    request: Omit<PolicyApprovalRequest, 'approvalMode'> & {
+      approvalMode?: ApprovalMode;
+    },
+  ): Promise<boolean | undefined> {
+    if (!this.onApprovalRequestFn) {
+      return undefined;
+    }
+
+    const { approvalMode, ...rest } = request;
+    try {
+      return await this.onApprovalRequestFn({
+        ...rest,
+        approvalMode: approvalMode ?? this.approvalMode,
+      });
+    } catch (error) {
+      debugLogger.warn(
+        '[PolicyEngine] onApprovalRequest handler failed, denying call:',
+        error,
+      );
+      return false;
+    }
   }
 
   isTrustedFolder(): boolean {

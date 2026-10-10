@@ -99,6 +99,33 @@ export interface SandboxModeConfig {
 }
 
 /**
+ * Container runtimes that can back a containerized tool sandbox.
+ *
+ * `runsc` (gVisor) is not a standalone container runtime; it is a Docker
+ * runtime, so it is executed through `docker` with `--runtime=runsc`.
+ */
+export type ContainerRuntime = 'docker' | 'podman' | 'runsc';
+
+/**
+ * The container runtimes that execute commands inside a container image
+ * rather than via an OS-level sandbox primitive.
+ */
+export const CONTAINER_RUNTIMES = [
+  'docker',
+  'podman',
+  'runsc',
+] as const satisfies readonly ContainerRuntime[];
+
+/**
+ * Determines whether a configured sandbox command is containerized.
+ */
+export function isContainerRuntime(
+  command: string | undefined,
+): command is ContainerRuntime {
+  return CONTAINER_RUNTIMES.some((runtime) => runtime === command);
+}
+
+/**
  * Global configuration options used to initialize a SandboxManager.
  */
 export interface GlobalSandboxOptions {
@@ -112,6 +139,15 @@ export interface GlobalSandboxOptions {
   modeConfig?: SandboxModeConfig;
   /** The policy manager for persistent approvals. */
   policyManager?: SandboxPolicyManager;
+  /**
+   * The container runtime requested by `SandboxConfig.command`.
+   * Only set when containerized sandboxing was explicitly requested.
+   */
+  containerRuntime?: ContainerRuntime;
+  /** The container image requested by `SandboxConfig.image`. */
+  containerImage?: string;
+  /** Whether the sandboxed process is allowed to reach the network. */
+  networkAccess?: boolean;
 }
 
 /**

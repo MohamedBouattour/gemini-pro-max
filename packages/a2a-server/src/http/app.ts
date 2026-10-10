@@ -13,7 +13,6 @@ import {
   InMemoryTaskStore,
   DefaultExecutionEventBus,
   type AgentExecutionEvent,
-  UnauthenticatedUser,
 } from '@a2a-js/sdk/server';
 import { A2AExpressApp, type UserBuilder } from '@a2a-js/sdk/server/express'; // Import server components
 import { v4 as uuidv4 } from 'uuid';
@@ -22,6 +21,13 @@ import type { AgentSettings } from '../types.js';
 import { GCSTaskStore, NoOpTaskStore } from '../persistence/gcs.js';
 import { CoderAgentExecutor } from '../agent/executor.js';
 import { requestStorage } from './requestStorage.js';
+import {
+  authenticate,
+  resolveCredentials,
+  BEARER_TOKEN_ENV_VAR,
+  BASIC_AUTH_ENV_VAR,
+  type A2ACredentials,
+} from './auth.js';
 import { loadConfig, loadEnvironment, setTargetDir } from '../config/config.js';
 import { loadSettings } from '../config/settings.js';
 import { loadExtensions } from '../config/extension.js';
@@ -93,34 +99,22 @@ export function updateCoderAgentCardUrl(port: number) {
   coderAgentCard.url = `http://localhost:${port}/`;
 }
 
-const customUserBuilder: UserBuilder = async (req: Request) => {
-  const auth = req.headers['authorization'];
-  if (auth) {
-    const scheme = auth.split(' ')[0];
+/**
+ * Builds the request user builder used by the A2A HTTP handlers.
+ *
+ * Credentials are resolved once at startup so misconfiguration is reported a
+ * single time rather than on every request.
+ */
+function createUserBuilder(credentials: A2ACredentials): UserBuilder {
+  return async (req: Request) => {
+    const auth = req.headers['authorization'];
+    const user = authenticate(auth, credentials);
     logger.info(
-      `[customUserBuilder] Received Authorization header with scheme: ${scheme}`,
+      `[customUserBuilder] Authorization scheme: ${auth ? auth.split(' ')[0] : 'none'}, authenticated: ${user.isAuthenticated}`,
     );
-  }
-  if (!auth) return new UnauthenticatedUser();
-
-  // 1. Bearer Auth
-  if (auth.startsWith('Bearer ')) {
-    const token = auth.substring(7);
-    if (token === 'valid-token') {
-      return { userName: 'bearer-user', isAuthenticated: true };
-    }
-  }
-
-  // 2. Basic Auth
-  if (auth.startsWith('Basic ')) {
-    const credentials = Buffer.from(auth.substring(6), 'base64').toString();
-    if (credentials === 'admin:password') {
-      return { userName: 'basic-user', isAuthenticated: true };
-    }
-  }
-
-  return new UnauthenticatedUser();
-};
+    return user;
+  };
+}
 
 async function handleExecuteCommand(
   req: express.Request,
@@ -223,12 +217,17 @@ export async function createApp() {
       'GOOGLE_APPLICATION_CREDENTIALS',
       'GOOGLE_CLOUD_PROJECT',
       'GEMINI_CLI_USE_COMPUTE_ADC',
+      BEARER_TOKEN_ENV_VAR,
+      BASIC_AUTH_ENV_VAR,
     ];
     for (const key of allowedServerKeys) {
       if (globalEnv[key] !== undefined) {
         process.env[key] = globalEnv[key];
       }
     }
+
+    const credentials = resolveCredentials();
+    const customUserBuilder = createUserBuilder(credentials);
 
     const settings = loadSettings(workspaceRoot, isTrusted ?? false);
     const extensions = loadExtensions(workspaceRoot, isTrusted ?? false);

@@ -87,8 +87,14 @@ export class GeminiCliSession {
       skillsSupport: true,
       adminSkillsEnabled: true,
       policyEngineConfig: {
-        // TODO: Revisit this default when we have a mechanism for wiring up approvals
-        defaultDecision: PolicyDecision.ALLOW,
+        // Without an approval handler there is no way for a headless embedder
+        // to answer ASK_USER, so keep allowing calls outright (pre-existing
+        // behavior). Supplying `onPolicyApproval` opts into real approval
+        // routing for risky operations.
+        defaultDecision: options.onPolicyApproval
+          ? PolicyDecision.ASK_USER
+          : PolicyDecision.ALLOW,
+        onApprovalRequest: options.onPolicyApproval,
       },
     };
 

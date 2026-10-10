@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Content } from '@google/gemini-cli-core';
+import type { Content, PolicyApprovalRequest } from '@google/gemini-cli-core';
 import type { Tool } from './tool.js';
 import type { SkillReference } from './skills.js';
 import type { GeminiCliAgent } from './agent.js';
@@ -77,6 +77,30 @@ export interface GeminiCliAgentOptions {
    * File path to load fake/resimulated responses from for testing.
    */
   fakeResponses?: string;
+
+  /**
+   * Invoked when the policy engine resolves a tool call to `ASK_USER`, which
+   * is how risky operations (for example shell commands and writes outside the
+   * workspace) reach an approval step.
+   *
+   * Return `true` to let the call proceed and `false` to deny it. Rejecting the
+   * returned promise also denies the call, so a failing handler fails closed.
+   *
+   * When this option is omitted the agent keeps its previous behavior and
+   * allows tool calls outright, so existing embedders are unaffected.
+   *
+   * @example
+   * ```typescript
+   * const agent = new GeminiCliAgent({
+   *   instructions: 'You are a careful assistant.',
+   *   onPolicyApproval: async (request) => {
+   *     console.log('approve?', request.toolName, request.args);
+   *     return true;
+   *   },
+   * });
+   * ```
+   */
+  onPolicyApproval?: (request: PolicyApprovalRequest) => Promise<boolean>;
 }
 
 /**

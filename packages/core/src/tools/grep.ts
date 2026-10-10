@@ -703,6 +703,10 @@ export class GrepTool extends BaseDeclarativeTool<GrepToolParams, ToolResult> {
     );
   }
 
+  override get implementationVariant() {
+    return GREP_DEFINITION.implementationVariant;
+  }
+
   /**
    * Validates the parameters for the tool
    * @param params Parameters to validate

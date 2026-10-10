@@ -4,6 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  Config,
+  MessageBus,
+  MessageBusType,
+  PolicyDecision,
+  PolicyEngine,
+  type PolicyEngineConfig,
+  type ToolConfirmationResponse,
+  type ToolPolicyRejection,
+} from '@google/gemini-cli-core';
 import { GeminiCliSession } from './session.js';
 import type { GeminiCliAgent } from './agent.js';
 import type { GeminiCliAgentOptions } from './types.js';
@@ -127,6 +137,103 @@ describe('GeminiCliSession id getter', () => {
     const s1 = new GeminiCliSession(baseOptions, 'session-a', mockAgent);
     const s2 = new GeminiCliSession(baseOptions, 'session-b', mockAgent);
     expect(s1.id).not.toBe(s2.id);
+  });
+});
+
+describe('GeminiCliSession policy approval wiring', () => {
+  // Returns the policyEngineConfig the session handed to the core Config.
+  const getPolicyEngineConfig = (): PolicyEngineConfig | undefined =>
+    vi.mocked(Config).mock.calls.at(-1)?.[0]?.policyEngineConfig;
+
+  const buildBusFromSessionConfig = (config: PolicyEngineConfig) =>
+    new MessageBus(new PolicyEngine(config));
+
+  it('wires onPolicyApproval into the policy engine config and asks the user by default', () => {
+    const onPolicyApproval = vi.fn().mockResolvedValue(true);
+    new GeminiCliSession(
+      { ...baseOptions, onPolicyApproval },
+      'session-policy-1',
+      mockAgent,
+    );
+
+    const policyEngineConfig = getPolicyEngineConfig();
+    expect(policyEngineConfig?.defaultDecision).toBe(PolicyDecision.ASK_USER);
+    expect(policyEngineConfig?.onApprovalRequest).toBe(onPolicyApproval);
+  });
+
+  it('keeps allowing tool calls when no approval handler is supplied', () => {
+    new GeminiCliSession(baseOptions, 'session-policy-2', mockAgent);
+
+    const policyEngineConfig = getPolicyEngineConfig();
+    expect(policyEngineConfig?.defaultDecision).toBe(PolicyDecision.ALLOW);
+    expect(policyEngineConfig?.onApprovalRequest).toBeUndefined();
+  });
+
+  it('routes risky shell commands to the approval handler', async () => {
+    const onPolicyApproval = vi.fn().mockResolvedValue(true);
+    new GeminiCliSession(
+      { ...baseOptions, onPolicyApproval },
+      'session-policy-3',
+      mockAgent,
+    );
+
+    const bus = buildBusFromSessionConfig(
+      getPolicyEngineConfig() as PolicyEngineConfig,
+    );
+
+    const responses: ToolConfirmationResponse[] = [];
+    bus.subscribe<ToolConfirmationResponse>(
+      MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+      (message) => responses.push(message),
+    );
+
+    await bus.publish({
+      type: MessageBusType.TOOL_CONFIRMATION_REQUEST,
+      correlationId: 'call-1',
+      toolCall: { name: 'run_shell_command', args: { command: 'rm -rf /' } },
+    });
+
+    expect(onPolicyApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'run_shell_command',
+        args: { command: 'rm -rf /' },
+      }),
+    );
+    expect(responses).toEqual([
+      {
+        type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+        correlationId: 'call-1',
+        confirmed: true,
+      },
+    ]);
+  });
+
+  it('denies risky shell commands when the approval handler declines', async () => {
+    const onPolicyApproval = vi.fn().mockResolvedValue(false);
+    new GeminiCliSession(
+      { ...baseOptions, onPolicyApproval },
+      'session-policy-4',
+      mockAgent,
+    );
+
+    const bus = buildBusFromSessionConfig(
+      getPolicyEngineConfig() as PolicyEngineConfig,
+    );
+
+    const rejections: ToolPolicyRejection[] = [];
+    bus.subscribe<ToolPolicyRejection>(
+      MessageBusType.TOOL_POLICY_REJECTION,
+      (message) => rejections.push(message),
+    );
+
+    await bus.publish({
+      type: MessageBusType.TOOL_CONFIRMATION_REQUEST,
+      correlationId: 'call-2',
+      toolCall: { name: 'run_shell_command', args: { command: 'rm -rf /' } },
+    });
+
+    expect(rejections).toHaveLength(1);
+    expect(rejections[0].toolCall.name).toBe('run_shell_command');
   });
 });
 

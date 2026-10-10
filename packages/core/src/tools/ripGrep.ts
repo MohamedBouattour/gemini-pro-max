@@ -651,6 +651,10 @@ export class RipGrepTool extends BaseDeclarativeTool<
     );
   }
 
+  override get implementationVariant() {
+    return RIP_GREP_DEFINITION.implementationVariant;
+  }
+
   /**
    * Validates the parameters for the tool
    * @param params Parameters to validate

@@ -359,7 +359,12 @@ describe('WebFetchTool', () => {
       const tool = new WebFetchTool(mockConfig, bus);
       const schema = tool.getSchema();
       expect(schema.parametersJsonSchema).toHaveProperty('properties.prompt');
-      expect(schema.parametersJsonSchema).not.toHaveProperty('properties.url');
+      // The model-facing declaration advertises `url` alongside `prompt` so
+      // the model can supply a URL directly; it stays optional.
+      expect(schema.parametersJsonSchema).toHaveProperty('properties.url');
+      expect(schema.parametersJsonSchema).toHaveProperty('required', [
+        'prompt',
+      ]);
     });
 
     it('should return experimental schema when enabled', () => {

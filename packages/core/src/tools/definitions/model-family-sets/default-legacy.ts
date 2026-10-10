@@ -55,6 +55,7 @@ import {
   LS_PARAM_IGNORE,
   WEB_SEARCH_PARAM_QUERY,
   WEB_FETCH_PARAM_PROMPT,
+  WEB_FETCH_PARAM_URL,
   READ_MANY_PARAM_INCLUDE,
   READ_MANY_PARAM_EXCLUDE,
   READ_MANY_PARAM_RECURSIVE,
@@ -436,6 +437,11 @@ A good instruction should concisely answer:
         [WEB_FETCH_PARAM_PROMPT]: {
           description:
             'A comprehensive prompt that includes the URL(s) (up to 20) to fetch and specific instructions on how to process their content (e.g., "Summarize https://example.com/article and extract key points from https://another.com/data"). All URLs to be fetched must be valid and complete, starting with "http://" or "https://", and be fully-formed with a valid hostname (e.g., a domain name like "example.com" or an IP address). For example, "https://example.com" is valid, but "example.com" is not.',
+          type: 'string',
+        },
+        [WEB_FETCH_PARAM_URL]: {
+          description:
+            'Optional: The direct HTTP/HTTPS URL of the web page or document to fetch.',
           type: 'string',
         },
       },

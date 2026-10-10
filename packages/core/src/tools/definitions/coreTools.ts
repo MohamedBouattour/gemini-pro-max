@@ -76,6 +76,7 @@ export {
   SHELL_PARAM_IS_BACKGROUND,
   WEB_SEARCH_PARAM_QUERY,
   WEB_FETCH_PARAM_PROMPT,
+  WEB_FETCH_PARAM_URL,
   READ_MANY_PARAM_INCLUDE,
   READ_MANY_PARAM_EXCLUDE,
   READ_MANY_PARAM_RECURSIVE,
@@ -143,6 +144,7 @@ export const GREP_DEFINITION: ToolDefinition = {
     return DEFAULT_LEGACY_SET.grep_search;
   },
   overrides: (modelId) => getToolSet(modelId).grep_search,
+  implementationVariant: 'legacy-regex',
 };
 
 export const RIP_GREP_DEFINITION: ToolDefinition = {
@@ -150,6 +152,7 @@ export const RIP_GREP_DEFINITION: ToolDefinition = {
     return DEFAULT_LEGACY_SET.grep_search_ripgrep;
   },
   overrides: (modelId) => getToolSet(modelId).grep_search_ripgrep,
+  implementationVariant: 'native-ripgrep',
 };
 
 export const WEB_SEARCH_DEFINITION: ToolDefinition = {

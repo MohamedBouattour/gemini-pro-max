@@ -28,6 +28,7 @@ import {
   vi,
 } from 'vitest';
 import { createApp, main } from './app.js';
+import { logger } from '../utils/logger.js';
 import { commandRegistry } from '../commands/command-registry.js';
 import {
   assertUniqueFinalEventIsLast,
@@ -1310,6 +1311,121 @@ describe('E2E Tests', () => {
 
       loadSettingsSpy.mockRestore();
       checkPathTrustSpy.mockRestore();
+    });
+  });
+
+  describe('authentication', () => {
+    const authenticationLogs = () =>
+      vi
+        .mocked(logger.info)
+        .mock.calls.map((call) => String(call[0]))
+        .filter((line) => line.includes('[customUserBuilder]'));
+
+    const lastAuthLog = () => authenticationLogs().at(-1) ?? '';
+
+    const sendWithAuth = async (
+      target: express.Express,
+      authorization: string | undefined,
+    ) => {
+      sendMessageStreamSpy.mockImplementation(async function* () {
+        yield* [{ type: 'content', value: 'hi' }];
+      });
+
+      let req = request
+        .agent(target)
+        .post('/')
+        .send(createStreamMessageRequest('hello', 'a2a-auth-message'))
+        .set('Content-Type', 'application/json');
+      if (authorization !== undefined) {
+        req = req.set('Authorization', authorization);
+      }
+      await req.expect(200);
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('authenticates a bearer token matching the configured value', async () => {
+      vi.stubEnv('A2A_AUTH_TOKEN', 'super-secret');
+      const authApp = await createApp();
+
+      await sendWithAuth(authApp, 'Bearer super-secret');
+
+      expect(lastAuthLog()).toContain('authenticated: true');
+    });
+
+    it('rejects an invalid bearer token', async () => {
+      vi.stubEnv('A2A_AUTH_TOKEN', 'super-secret');
+      const authApp = await createApp();
+
+      await sendWithAuth(authApp, 'Bearer wrong-token');
+
+      expect(lastAuthLog()).toContain('authenticated: false');
+    });
+
+    it('rejects the previously hardcoded bearer token', async () => {
+      vi.stubEnv('A2A_AUTH_TOKEN', 'super-secret');
+      const authApp = await createApp();
+
+      await sendWithAuth(authApp, 'Bearer valid-token');
+
+      expect(lastAuthLog()).toContain('authenticated: false');
+    });
+
+    it('rejects a request with no Authorization header', async () => {
+      vi.stubEnv('A2A_AUTH_TOKEN', 'super-secret');
+      const authApp = await createApp();
+
+      await sendWithAuth(authApp, undefined);
+
+      expect(lastAuthLog()).toContain('Authorization scheme: none');
+      expect(lastAuthLog()).toContain('authenticated: false');
+    });
+
+    it('authenticates basic credentials matching the configured value', async () => {
+      vi.stubEnv('A2A_BASIC_AUTH', 'alice:hunter2');
+      const authApp = await createApp();
+
+      await sendWithAuth(
+        authApp,
+        `Basic ${Buffer.from('alice:hunter2', 'utf8').toString('base64')}`,
+      );
+
+      expect(lastAuthLog()).toContain('authenticated: true');
+    });
+
+    it('rejects invalid basic credentials', async () => {
+      vi.stubEnv('A2A_BASIC_AUTH', 'alice:hunter2');
+      const authApp = await createApp();
+
+      await sendWithAuth(
+        authApp,
+        `Basic ${Buffer.from('alice:wrong', 'utf8').toString('base64')}`,
+      );
+
+      expect(lastAuthLog()).toContain('authenticated: false');
+    });
+
+    it('rejects the previously hardcoded basic credentials', async () => {
+      vi.stubEnv('A2A_BASIC_AUTH', 'alice:hunter2');
+      const authApp = await createApp();
+
+      await sendWithAuth(
+        authApp,
+        `Basic ${Buffer.from('admin:password', 'utf8').toString('base64')}`,
+      );
+
+      expect(lastAuthLog()).toContain('authenticated: false');
+    });
+
+    it('rejects every token in production when nothing is configured', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      const authApp = await createApp();
+
+      await sendWithAuth(authApp, 'Bearer dev-token');
+
+      expect(lastAuthLog()).toContain('authenticated: false');
     });
   });
 });

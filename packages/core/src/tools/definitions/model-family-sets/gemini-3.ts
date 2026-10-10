@@ -55,6 +55,7 @@ import {
   LS_PARAM_IGNORE,
   WEB_SEARCH_PARAM_QUERY,
   WEB_FETCH_PARAM_PROMPT,
+  WEB_FETCH_PARAM_URL,
   READ_MANY_PARAM_INCLUDE,
   READ_MANY_PARAM_EXCLUDE,
   READ_MANY_PARAM_RECURSIVE,
@@ -419,6 +420,11 @@ The user has the ability to modify the \`new_string\` content. If modified, this
         [WEB_FETCH_PARAM_PROMPT]: {
           description:
             'A string containing the URL(s) and your specific analysis instructions. Be clear about what information you want to find or summarize. Supports up to 20 URLs.',
+          type: 'string',
+        },
+        [WEB_FETCH_PARAM_URL]: {
+          description:
+            'Optional: The direct HTTP/HTTPS URL of the web page or document to fetch.',
           type: 'string',
         },
       },

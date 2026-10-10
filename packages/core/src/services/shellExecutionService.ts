@@ -535,6 +535,10 @@ export class ShellExecutionService {
 
     // 1. Determine Shell Configuration
     const isWindows = os.platform() === 'win32';
+    // Only the native Windows helper needs the cmd.exe wrapper. Every other
+    // manager - including the containerized docker/podman manager selected by
+    // `sandbox.command` - receives the resolved shell command through
+    // `prepareCommand` below and wraps it in the container itself.
     const isStrictSandbox =
       isWindows &&
       shellExecutionConfig.sandboxConfig?.enabled &&

@@ -209,7 +209,6 @@ export function toAcpToolKind(kind: Kind): acp.ToolKind {
     case Kind.Move:
     case Kind.Think:
     case Kind.Fetch:
-    case Kind.SwitchMode:
     case Kind.Other:
       return kind as acp.ToolKind;
     case Kind.Agent:

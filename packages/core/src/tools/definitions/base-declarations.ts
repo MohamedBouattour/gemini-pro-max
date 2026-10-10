@@ -81,6 +81,7 @@ export const TODOS_ITEM_PARAM_STATUS = 'status';
 // -- web_fetch --
 export const WEB_FETCH_TOOL_NAME = 'web_fetch';
 export const WEB_FETCH_PARAM_PROMPT = 'prompt';
+export const WEB_FETCH_PARAM_URL = 'url';
 
 // -- read_many_files --
 export const READ_MANY_FILES_TOOL_NAME = 'read_many_files';

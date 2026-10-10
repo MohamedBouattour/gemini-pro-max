@@ -26,6 +26,7 @@ import {
   isBuildFile,
   extractFilePathFromArgs,
 } from '../utils/buildFileUtils.js';
+import type { GrepImplementationVariant } from './definitions/types.js';
 
 /**
 /**
@@ -519,6 +520,17 @@ export abstract class DeclarativeTool<
   }
 
   get toolAnnotations(): Record<string, unknown> | undefined {
+    return undefined;
+  }
+
+  /**
+   * Identifies which runtime implementation backs this tool when several tools
+   * deliberately share the same public name (e.g. `grep_search`, which is
+   * implemented by both {@link GrepTool} and {@link RipGrepTool}).
+   *
+   * Returns `undefined` when the tool name is unambiguous.
+   */
+  get implementationVariant(): GrepImplementationVariant | undefined {
     return undefined;
   }
 
@@ -1125,7 +1137,6 @@ export enum Kind {
   Fetch = 'fetch',
   Communicate = 'communicate',
   Plan = 'plan',
-  SwitchMode = 'switch_mode',
   Other = 'other',
 }
 

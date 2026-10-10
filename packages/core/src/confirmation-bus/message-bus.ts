@@ -135,7 +135,32 @@ export class MessageBus extends EventEmitter {
               confirmed: false,
             });
             break;
-          case PolicyDecision.ASK_USER:
+          case PolicyDecision.ASK_USER: {
+            // Headless embedders (e.g. the SDK) have no confirmation UI, so an
+            // approval handler on the policy engine takes precedence over the
+            // listener check below.
+            const approval = await this.policyEngine.requestApproval({
+              toolName: message.toolCall.name ?? 'unknown',
+              args: message.toolCall.args,
+              serverName: message.serverName,
+              subagent: message.subagent,
+            });
+
+            if (approval !== undefined) {
+              if (!approval) {
+                this.emitMessage({
+                  type: MessageBusType.TOOL_POLICY_REJECTION,
+                  toolCall: message.toolCall,
+                });
+              }
+              this.emitMessage({
+                type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+                correlationId: message.correlationId,
+                confirmed: approval,
+              });
+              break;
+            }
+
             // Pass through to UI for user confirmation if any listeners exist.
             // If no listeners are registered (e.g., headless/ACP flows),
             // immediately request user confirmation to avoid long timeouts.
@@ -152,6 +177,7 @@ export class MessageBus extends EventEmitter {
               });
             }
             break;
+          }
           default:
             throw new Error(`Unknown policy decision: ${decision}`);
         }

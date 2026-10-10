@@ -24,6 +24,7 @@ import { WEB_SEARCH_DEFINITION } from './definitions/coreTools.js';
 import { resolveToolDeclaration } from './definitions/resolver.js';
 import { LlmRole } from '../telemetry/llmRole.js';
 import type { AgentLoopContext } from '../config/agent-loop-context.js';
+import type { GeminiClient } from '../core/client.js';
 import { wrapUntrusted } from '../utils/textUtils.js';
 
 interface GroundingChunkWeb {
@@ -68,12 +69,24 @@ export interface WebSearchToolResult extends ToolResult {
     : GroundingChunkItem[];
 }
 
+/**
+ * The minimal capability surface {@link WebSearchToolInvocation} requires.
+ *
+ * Declaring the requirement explicitly keeps the invocation structurally typed
+ * against the LLM client alone, instead of relying on the looser `Config` -
+ * `AgentLoopContext` relationship.
+ */
+export interface WebSearchContext {
+  /** The client used to reach the grounding/search model. */
+  readonly geminiClient: GeminiClient;
+}
+
 class WebSearchToolInvocation extends BaseToolInvocation<
   WebSearchToolParams,
   WebSearchToolResult
 > {
   constructor(
-    private readonly context: AgentLoopContext,
+    private readonly searchContext: WebSearchContext,
     params: WebSearchToolParams,
     messageBus: MessageBus,
     _toolName?: string,
@@ -89,7 +102,7 @@ class WebSearchToolInvocation extends BaseToolInvocation<
   async execute({
     abortSignal: signal,
   }: ExecuteOptions): Promise<WebSearchToolResult> {
-    const geminiClient = this.context.geminiClient;
+    const geminiClient = this.searchContext.geminiClient;
 
     try {
       const response = await geminiClient.generateContent(
@@ -247,7 +260,7 @@ export class WebSearchTool extends BaseDeclarativeTool<
     _toolDisplayName?: string,
   ): ToolInvocation<WebSearchToolParams, WebSearchToolResult> {
     return new WebSearchToolInvocation(
-      this.context.config,
+      this.context,
       params,
       messageBus ?? this.messageBus,
       _toolName,

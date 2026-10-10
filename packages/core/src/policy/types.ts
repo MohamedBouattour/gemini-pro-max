@@ -277,11 +277,56 @@ export interface HookCheckerRule {
   checker: SafetyCheckerConfig;
 }
 
+/**
+ * Describes a tool call that the policy engine could not resolve without
+ * asking a human.
+ *
+ * Handed to {@link PolicyEngineConfig.onApprovalRequest}, which exists for
+ * headless embedders (SDK, A2A) that have no confirmation UI to render.
+ */
+export interface PolicyApprovalRequest {
+  /**
+   * The tool the model asked to invoke.
+   */
+  readonly toolName: string;
+
+  /**
+   * The raw arguments the model supplied for the tool call.
+   */
+  readonly args?: Record<string, unknown>;
+
+  /**
+   * The approval mode the call was evaluated in. Useful for deciding whether
+   * a call that is normally prompted should be waved through.
+   */
+  readonly approvalMode: ApprovalMode;
+
+  /**
+   * The MCP server that owns the tool, when the call targets an MCP server.
+   */
+  readonly serverName?: string;
+
+  /**
+   * The subagent that issued the call, when the call came from a subagent.
+   */
+  readonly subagent?: string;
+}
+
 export interface PolicyEngineConfig {
   /**
    * List of policy rules to apply.
    */
   rules?: PolicyRule[];
+
+  /**
+   * Callback invoked when a tool call resolves to {@link PolicyDecision.ASK_USER}.
+   *
+   * Only consulted when no interactive confirmation UI is listening on the
+   * message bus, so registering this does not change behaviour for the CLI.
+   * Resolve to `true` to allow the call and `false` to deny it; throwing
+   * denies the call.
+   */
+  onApprovalRequest?: (request: PolicyApprovalRequest) => Promise<boolean>;
 
   /**
    * List of safety checkers to apply to tool calls.

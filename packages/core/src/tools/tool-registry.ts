@@ -33,6 +33,7 @@ import {
   DISCOVERED_TOOL_PREFIX,
   TOOL_LEGACY_ALIASES,
   getToolAliases,
+  GREP_TOOL_NAME,
   WRITE_FILE_TOOL_NAME,
   EDIT_TOOL_NAME,
   UPDATE_TOPIC_TOOL_NAME,
@@ -282,14 +283,31 @@ export class ToolRegistry {
    * Note that excluded tools are still registered to allow for enabling them
    * later in the session.
    *
+   * `grep_search` is intentionally published under a single name by two
+   * interchangeable implementations. When the opposite implementation is
+   * registered it replaces the previous one so exactly one `grep_search`
+   * schema is ever emitted to the model.
+   *
    * @param tool - The tool object containing schema and execution logic.
    */
   registerTool(tool: AnyDeclarativeTool): void {
-    if (this.allKnownTools.has(tool.name)) {
-      // Decide on behavior: throw error, log warning, or allow overwrite
-      debugLogger.warn(
-        `Tool with name "${tool.name}" is already registered. Overwriting.`,
-      );
+    const existing = this.allKnownTools.get(tool.name);
+    if (existing) {
+      const incomingVariant = tool.implementationVariant;
+      const existingVariant = existing.implementationVariant;
+      if (
+        tool.name === GREP_TOOL_NAME &&
+        incomingVariant !== undefined &&
+        incomingVariant !== existingVariant
+      ) {
+        debugLogger.warn(
+          `Replacing the "${tool.name}" implementation (${existingVariant} -> ${incomingVariant}).`,
+        );
+      } else {
+        debugLogger.warn(
+          `Tool with name "${tool.name}" is already registered. Overwriting.`,
+        );
+      }
     }
     this.allKnownTools.set(tool.name, tool);
   }

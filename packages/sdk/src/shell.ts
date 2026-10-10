@@ -9,6 +9,7 @@ import {
   ShellExecutionService,
   ShellTool,
   type Config as CoreConfig,
+  type ShellExecutionConfig,
 } from '@google/gemini-cli-core';
 import type {
   AgentShell,
@@ -31,12 +32,50 @@ import type {
 export class SdkAgentShell implements AgentShell {
   constructor(private readonly config: CoreConfig) {}
 
+  /**
+   * Builds the shell execution config for a single command invocation,
+   * applying {@link AgentShellOptions.env} on top of the agent defaults.
+   *
+   * The requested variables are also added to the sanitization allow-list;
+   * without that they would be redacted before reaching the child process.
+   */
+  private buildShellExecutionConfig(
+    env: Record<string, string> | undefined,
+  ): ShellExecutionConfig {
+    const base = this.config.getShellExecutionConfig();
+    if (!env || Object.keys(env).length === 0) {
+      return base;
+    }
+
+    return {
+      ...base,
+      env: { ...(base.env ?? process.env), ...env },
+      sanitizationConfig: {
+        ...base.sanitizationConfig,
+        allowedEnvironmentVariables: [
+          ...(base.sanitizationConfig.allowedEnvironmentVariables ?? []),
+          ...Object.keys(env),
+        ],
+      },
+    };
+  }
+
   async exec(
     command: string,
     options?: AgentShellOptions,
   ): Promise<AgentShellResult> {
     const cwd = options?.cwd || this.config.getWorkingDir();
     const abortController = new AbortController();
+
+    // Wire timeoutSeconds via AbortSignal.timeout, composed with the local
+    // controller so policy checks can also cancel the execution.
+    let timeoutSignal: AbortSignal | undefined;
+    if (options?.timeoutSeconds && options.timeoutSeconds > 0) {
+      timeoutSignal = AbortSignal.timeout(options.timeoutSeconds * 1000);
+    }
+    const signal = timeoutSignal
+      ? AbortSignal.any([abortController.signal, timeoutSignal])
+      : abortController.signal;
 
     // Use ShellTool to check policy
     const loopContext: AgentLoopContext = this.config;
@@ -47,9 +86,7 @@ export class SdkAgentShell implements AgentShell {
         dir_path: cwd,
       });
 
-      const confirmation = await invocation.shouldConfirmExecute(
-        abortController.signal,
-      );
+      const confirmation = await invocation.shouldConfirmExecute(signal);
       if (confirmation) {
         throw new Error(
           'Command execution requires confirmation but no interactive session is available.',
@@ -65,22 +102,31 @@ export class SdkAgentShell implements AgentShell {
       };
     }
 
+    const shellExecutionConfig = this.buildShellExecutionConfig(options?.env);
+
     const handle = await ShellExecutionService.execute(
       command,
       cwd,
       () => {}, // No-op output event handler for now
-      abortController.signal,
+      signal,
       false, // shouldUseNodePty: false for headless execution
-      this.config.getShellExecutionConfig(),
+      shellExecutionConfig,
     );
 
     const result = await handle.result;
+
+    const timedOut = timeoutSignal?.aborted === true;
 
     return {
       output: result.output,
       stdout: result.output, // ShellExecutionService combines stdout/stderr usually
       stderr: '', // ShellExecutionService currently combines, so stderr is empty or mixed
       exitCode: result.exitCode,
+      error: timedOut
+        ? new Error(
+            `Command timed out after ${options?.timeoutSeconds} seconds: ${command}`,
+          )
+        : (result.error ?? undefined),
     };
   }
 }

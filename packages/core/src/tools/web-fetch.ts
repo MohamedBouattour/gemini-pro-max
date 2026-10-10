@@ -34,6 +34,7 @@ import { debugLogger } from '../utils/debugLogger.js';
 import { coreEvents } from '../utils/events.js';
 import { retryWithBackoff, getRetryErrorType } from '../utils/retry.js';
 import { WEB_FETCH_DEFINITION } from './definitions/coreTools.js';
+import { WEB_FETCH_PARAM_URL } from './definitions/base-declarations.js';
 import { resolveToolDeclaration } from './definitions/resolver.js';
 import { LRUCache } from 'mnemonist';
 import type { AgentLoopContext } from '../config/agent-loop-context.js';
@@ -975,13 +976,13 @@ export class WebFetchTool extends BaseDeclarativeTool<
         parametersJsonSchema: {
           type: 'object',
           properties: {
-            url: {
+            [WEB_FETCH_PARAM_URL]: {
               type: 'string',
               description:
                 'The URL to fetch. Must be a valid http or https URL.',
             },
           },
-          required: ['url'],
+          required: [WEB_FETCH_PARAM_URL],
         },
       };
     }
